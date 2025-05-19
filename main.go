@@ -17,8 +17,10 @@ func main() {
 	flag.StringVar(&namespace, "n", "default", "Namespace of the resource")
 	flag.Parse()
 
+	fmt.Printf("Using namespace: %s\n", namespace)
+
 	if flag.NArg() < 2 {
-		fmt.Println("Usage: kubectl lookup-ingress <deployment|service> <name> [-n namespace]")
+		fmt.Println("Usage: kubectl lookupingress [-n namespace] <deployment|service> <name>")
 		os.Exit(1)
 	}
 
@@ -29,7 +31,6 @@ func main() {
 	if kubeconfig == "" {
 		kubeconfig = os.ExpandEnv("$HOME/.kube/config")
 	}
-	fmt.Println("Using kubeconfig:", kubeconfig)
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
@@ -129,12 +130,63 @@ func printIngressTable(entries []map[string]string) {
 		return
 	}
 
-	fmt.Printf("\n%-30s | %-25s | %-20s | %-20s\n", "Ingress Name", "Host", "Path", "Service Name")
-	fmt.Println(strings.Repeat("-", 105))
+	// Define headers
+	headers := []string{"Ingress Name", "Host", "Path", "Service Name"}
+	keys := []string{"ingress", "host", "path", "service"} // Corresponding keys in the map
 
+	// Initialize column widths with the length of the headers themselves
+	colWidths := make(map[string]int)
+	for i, header := range headers {
+		colWidths[keys[i]] = len(header)
+	}
+
+	// First pass: Iterate through entries to find the maximum width for each column
 	for _, entry := range entries {
-		fmt.Printf("%-30s | %-25s | %-20s | %-20s\n",
-			entry["ingress"], entry["host"], entry["path"], entry["service"])
+		for _, key := range keys {
+			colWidths[key] = max(colWidths[key], len(entry[key]))
+		}
+	}
+
+	// Construct the format string dynamically based on calculated widths
+	// Add some padding (e.g., 2 spaces) for better readability between columns
+	padding := 2
+	headerFormat := ""
+	rowFormat := ""
+	totalWidth := 0
+
+	for i, key := range keys {
+		width := colWidths[key]
+		headerFormat += fmt.Sprintf("%%-%ds", width) // Left-align header
+		rowFormat += fmt.Sprintf("%%-%ds", width)    // Left-align data
+
+		totalWidth += width
+		if i < len(keys)-1 {
+			separator := strings.Repeat(" ", padding) + "|" + strings.Repeat(" ", padding)
+			headerFormat += separator
+			rowFormat += separator
+			totalWidth += len(separator)
+		}
+	}
+	headerFormat += "\n"
+	rowFormat += "\n"
+
+	// Print the header
+	headerValues := make([]interface{}, len(headers))
+	for i, h := range headers {
+		headerValues[i] = h
+	}
+	fmt.Printf(headerFormat, headerValues...)
+
+	// Print the separator line
+	fmt.Println(strings.Repeat("-", totalWidth))
+
+	// Second pass: Print the data rows
+	for _, entry := range entries {
+		rowValues := make([]interface{}, len(keys))
+		for i, key := range keys {
+			rowValues[i] = entry[key]
+		}
+		fmt.Printf(rowFormat, rowValues...)
 	}
 	fmt.Println()
 }
